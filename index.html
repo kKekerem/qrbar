@@ -9,7 +9,7 @@
     body { font-family: Arial, sans-serif; padding: 20px; }
     #reader { width: 300px; margin: 20px auto; display: none; }
     #sonuc { margin-top: 20px; font-weight: bold; white-space: pre-wrap; }
-    button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-right: 10px; }
   </style>
 </head>
 <body>
@@ -21,8 +21,10 @@
      data-callback="handleCredentialResponse"
      data-auto_prompt="false">
 </div>
+
 <div class="g_id_signin" data-type="standard"></div>
 
+<button id="btnIzin" disabled>API İzni Ver</button>
 <button id="btnTara" disabled>Tara</button>
 
 <div id="reader"></div>
@@ -31,9 +33,11 @@
 <script>
   let kullaniciEmail = null;
   let accessToken = null;
+  let tokenClient = null;
   let html5QrcodeScanner = null;
   let scanning = false;
 
+  // JWT token'dan e-postayı ayıkla
   function parseJwt(token) {
     let base64Url = token.split('.')[1];
     let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -42,23 +46,31 @@
     return JSON.parse(jsonPayload);
   }
 
+  // Google Giriş başarılı olunca çağrılır
   function handleCredentialResponse(response) {
     const data = parseJwt(response.credential);
     kullaniciEmail = data.email;
     document.getElementById("sonuc").innerText = "Giriş başarılı: " + kullaniciEmail;
-    
+    document.getElementById("btnIzin").disabled = false;
+
+    // Token client oluştur
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: "890675372690-h4quf85ij18l5idkl6v79php4mo5jurp.apps.googleusercontent.com",
       scope: "https://www.googleapis.com/auth/script.external_request",
       callback: (tokenResponse) => {
         accessToken = tokenResponse.access_token;
-        document.getElementById("sonuc").innerText += "\nToken alındı, 'Tara' butonuna basabilirsiniz.";
+        document.getElementById("sonuc").innerText += "\nAPI izni alındı. 'Tara' butonuna basabilirsiniz.";
         document.getElementById("btnTara").disabled = false;
       }
     });
-    tokenClient.requestAccessToken();
   }
 
+  // İzin butonuna tıklayınca token talep et
+  document.getElementById("btnIzin").addEventListener("click", () => {
+    tokenClient.requestAccessToken();
+  });
+
+  // QR barkod okutulduğunda
   function onScanSuccess(decodedText, decodedResult) {
     if (!kullaniciEmail) {
       alert("Lütfen önce Gmail hesabınızla giriş yapın.");
@@ -92,6 +104,11 @@
     });
   }
 
+  // Tara butonuna tıklayınca kamerayı aç
+  document.getElementById("btnTara").addEventListener("click", () => {
+    startScanning();
+  });
+
   function startScanning() {
     if (scanning) return;
     scanning = true;
@@ -120,10 +137,6 @@
       });
     }
   }
-
-  document.getElementById("btnTara").addEventListener("click", () => {
-    startScanning();
-  });
 </script>
 
 </body>
