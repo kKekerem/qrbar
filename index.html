@@ -2,107 +2,52 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <title>Supabase Barkod Oyunu</title>
-  <!-- Doğru Supabase UMD kütüphanesi -->
+  <title>Barkod Oyunu - Giriş</title>
+
+  <!-- Supabase SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.5/dist/umd/supabase.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <style>
+    body { font-family: Arial; padding: 40px; background: #f5f5f5; }
+    #loginStatus { margin-top: 20px; font-size: 18px; }
+    button { padding: 10px 20px; font-size: 16px; }
+  </style>
 </head>
 <body>
 
-<h2>Supabase Barkod Oyunu</h2>
+  <h2>Barkod Oyunu</h2>
+  <button id="btnLogin">🔐 Google ile Giriş Yap</button>
+  <div id="loginStatus">Henüz giriş yapılmadı.</div>
 
-<button id="btnLogin">Google ile Giriş Yap</button>
-<button id="btnTara" disabled>Tara</button>
-
-<div id="reader" style="width:300px; margin-top:20px; display:none;"></div>
-<div id="sonuc"></div>
-
-<script>
-  window.addEventListener('load', async () => {
+  <script>
+    // ✅ Supabase Proje bilgileri
     const SUPABASE_URL = "https://rcjgbxpjybtrnebcizmv.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamdieHBqeWJ0cm5lYmNpem12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NjY0MTcsImV4cCI6MjA2NjM0MjQxN30.ZC96N-vTUjzfOaNKrvc5aAExZsrNYuZbUHzD706MuiE";
 
-    // ✅ Artık supabase global olarak tanımlıdır
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // ✅ Supabase client oluştur
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    let currentUser = null;
-    let html5QrcodeScanner = null;
-
+    // ✅ Login butonuna tıklanınca giriş başlat
     document.getElementById("btnLogin").onclick = async () => {
-      const { data, error } = await supabaseClient.auth.signInWithOAuth({
-        provider: 'google',
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google'  // ❗ redirectTo YOK
       });
       if (error) {
-        alert("Giriş Hatası: " + error.message);
-        return;
+        alert("Giriş hatası: " + error.message);
+        console.error(error);
       }
     };
 
-    supabaseClient.auth.onAuthStateChange((event, session) => {
+    // ✅ Giriş yapıldığında kullanıcıyı al
+    supabase.auth.onAuthStateChange(async (event, session) => {
       if (session && session.user) {
-        currentUser = session.user;
-        document.getElementById("sonuc").innerText = "Hoşgeldin, " + currentUser.email;
-        document.getElementById("btnTara").disabled = false;
+        document.getElementById("loginStatus").innerText =
+          "Hoş geldin: " + session.user.email;
       } else {
-        currentUser = null;
-        document.getElementById("sonuc").innerText = "Lütfen giriş yapınız.";
-        document.getElementById("btnTara").disabled = true;
+        document.getElementById("loginStatus").innerText =
+          "Henüz giriş yapılmadı.";
       }
     });
-
-    document.getElementById("btnTara").onclick = () => {
-      startScanning();
-    };
-
-    function startScanning() {
-      document.getElementById("reader").style.display = "block";
-      html5QrcodeScanner = new Html5Qrcode("reader");
-
-      html5QrcodeScanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
-        async (decodedText, decodedResult) => {
-          document.getElementById("sonuc").innerText = "Okutulan barkod: " + decodedText;
-
-          let { data: existingScan, error: scanError } = await supabaseClient
-            .from('scans')
-            .select('*')
-            .eq('barcode', decodedText)
-            .single();
-
-          if (existingScan) {
-            alert("Üzgünüz, bu barkod daha önce okutulmuş!");
-            stopScanning();
-            return;
-          }
-
-          let { data, error } = await supabaseClient
-            .from('scans')
-            .insert([{ user_id: currentUser.id, barcode: decodedText }]);
-
-          if (error) {
-            alert("Kayıt hatası: " + error.message);
-            stopScanning();
-            return;
-          }
-
-          alert("Barkod başarıyla okutuldu ve puan eklendi.");
-          stopScanning();
-        },
-        (errorMessage) => {
-          console.warn(`Tarama hatası: ${errorMessage}`);
-        }
-      );
-    }
-
-    function stopScanning() {
-      if (html5QrcodeScanner) {
-        html5QrcodeScanner.stop();
-        document.getElementById("reader").style.display = "none";
-      }
-    }
-  });
-</script>
-
+  </script>
 </body>
 </html>
