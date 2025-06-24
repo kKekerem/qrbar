@@ -2,141 +2,106 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <title>QR Barkod Oyunu</title>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <title>Supabase Barkod Oyunu</title>
+  <!-- Doğru Supabase UMD kütüphanesi -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.5/dist/umd/supabase.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    #reader { width: 300px; margin: 20px auto; display: none; }
-    #sonuc { margin-top: 20px; font-weight: bold; white-space: pre-wrap; }
-    button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-right: 10px; }
-  </style>
 </head>
 <body>
 
-<h2>QR Barkod Oyunu</h2>
+<h2>Supabase Barkod Oyunu</h2>
 
-<div id="g_id_onload"
-     data-client_id="890675372690-h4quf85ij18l5idkl6v79php4mo5jurp.apps.googleusercontent.com"
-     data-callback="handleCredentialResponse"
-     data-auto_prompt="false">
-</div>
-
-<div class="g_id_signin" data-type="standard"></div>
-
-<button id="btnIzin" disabled>API İzni Ver</button>
+<button id="btnLogin">Google ile Giriş Yap</button>
 <button id="btnTara" disabled>Tara</button>
 
-<div id="reader"></div>
-<div id="sonuc">Henüz okutulmadı.</div>
+<div id="reader" style="width:300px; margin-top:20px; display:none;"></div>
+<div id="sonuc"></div>
 
 <script>
-  let kullaniciEmail = null;
-  let accessToken = null;
-  let tokenClient = null;
-  let html5QrcodeScanner = null;
-  let scanning = false;
+  window.addEventListener('load', async () => {
+    const SUPABASE_URL = "https://rcjgbxpjybtrnebcizmv.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamdieHBqeWJ0cm5lYmNpem12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NjY0MTcsImV4cCI6MjA2NjM0MjQxN30.ZC96N-vTUjzfOaNKrvc5aAExZsrNYuZbUHzD706MuiE";
 
-  // JWT token'dan e-postayı ayıkla
-  function parseJwt(token) {
-    let base64Url = token.split('.')[1];
-    let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    let jsonPayload = decodeURIComponent(atob(base64).split('').map(c =>
-      '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-    return JSON.parse(jsonPayload);
-  }
+    // ✅ Artık supabase global olarak tanımlıdır
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // Google Giriş başarılı olunca çağrılır
-  function handleCredentialResponse(response) {
-    const data = parseJwt(response.credential);
-    kullaniciEmail = data.email;
-    document.getElementById("sonuc").innerText = "Giriş başarılı: " + kullaniciEmail;
-    document.getElementById("btnIzin").disabled = false;
+    let currentUser = null;
+    let html5QrcodeScanner = null;
 
-    // Token client oluştur
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: "890675372690-h4quf85ij18l5idkl6v79php4mo5jurp.apps.googleusercontent.com",
-      scope: "https://www.googleapis.com/auth/script.external_request",
-      callback: (tokenResponse) => {
-        accessToken = tokenResponse.access_token;
-        document.getElementById("sonuc").innerText += "\nAPI izni alındı. 'Tara' butonuna basabilirsiniz.";
+    document.getElementById("btnLogin").onclick = async () => {
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+      });
+      if (error) {
+        alert("Giriş Hatası: " + error.message);
+        return;
+      }
+    };
+
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (session && session.user) {
+        currentUser = session.user;
+        document.getElementById("sonuc").innerText = "Hoşgeldin, " + currentUser.email;
         document.getElementById("btnTara").disabled = false;
+      } else {
+        currentUser = null;
+        document.getElementById("sonuc").innerText = "Lütfen giriş yapınız.";
+        document.getElementById("btnTara").disabled = true;
       }
     });
-  }
 
-  // İzin butonuna tıklayınca token talep et
-  document.getElementById("btnIzin").addEventListener("click", () => {
-    tokenClient.requestAccessToken();
-  });
+    document.getElementById("btnTara").onclick = () => {
+      startScanning();
+    };
 
-  // QR barkod okutulduğunda
-  function onScanSuccess(decodedText, decodedResult) {
-    if (!kullaniciEmail) {
-      alert("Lütfen önce Gmail hesabınızla giriş yapın.");
-      stopScanning();
-      return;
+    function startScanning() {
+      document.getElementById("reader").style.display = "block";
+      html5QrcodeScanner = new Html5Qrcode("reader");
+
+      html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        async (decodedText, decodedResult) => {
+          document.getElementById("sonuc").innerText = "Okutulan barkod: " + decodedText;
+
+          let { data: existingScan, error: scanError } = await supabaseClient
+            .from('scans')
+            .select('*')
+            .eq('barcode', decodedText)
+            .single();
+
+          if (existingScan) {
+            alert("Üzgünüz, bu barkod daha önce okutulmuş!");
+            stopScanning();
+            return;
+          }
+
+          let { data, error } = await supabaseClient
+            .from('scans')
+            .insert([{ user_id: currentUser.id, barcode: decodedText }]);
+
+          if (error) {
+            alert("Kayıt hatası: " + error.message);
+            stopScanning();
+            return;
+          }
+
+          alert("Barkod başarıyla okutuldu ve puan eklendi.");
+          stopScanning();
+        },
+        (errorMessage) => {
+          console.warn(`Tarama hatası: ${errorMessage}`);
+        }
+      );
     }
-    if (!accessToken) {
-      alert("Lütfen API erişim iznini verin.");
-      stopScanning();
-      return;
-    }
 
-    document.getElementById("sonuc").innerText = "Okutulan Kod: " + decodedText;
-
-    fetch("https://script.google.com/macros/s/AKfycbyHixl49zYI3cxHmvAG0RL6UtSRZci9f5OjLSFwLtfb2kQT2LroH-JBzeH4WzFM0XHS/exec", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + accessToken
-      },
-      body: JSON.stringify({ email: kullaniciEmail, barcode: decodedText })
-    })
-    .then(res => res.json())
-    .then(data => {
-      alert(data.message);
-      stopScanning();
-    })
-    .catch(err => {
-      alert("Sunucu hatası: " + err.message);
-      stopScanning();
-    });
-  }
-
-  // Tara butonuna tıklayınca kamerayı aç
-  document.getElementById("btnTara").addEventListener("click", () => {
-    startScanning();
-  });
-
-  function startScanning() {
-    if (scanning) return;
-    scanning = true;
-    document.getElementById("reader").style.display = "block";
-
-    html5QrcodeScanner = new Html5Qrcode("reader");
-    html5QrcodeScanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      onScanSuccess
-    ).catch(err => {
-      alert("Kamera başlatılamadı: " + err);
-      scanning = false;
-      document.getElementById("reader").style.display = "none";
-    });
-  }
-
-  function stopScanning() {
-    if (!scanning) return;
-    scanning = false;
-    if (html5QrcodeScanner) {
-      html5QrcodeScanner.stop().then(() => {
+    function stopScanning() {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop();
         document.getElementById("reader").style.display = "none";
-      }).catch(err => {
-        console.error("Kamera durdurulamadı:", err);
-      });
+      }
     }
-  }
+  });
 </script>
 
 </body>
